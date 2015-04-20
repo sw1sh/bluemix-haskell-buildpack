@@ -15,41 +15,55 @@ CACHE_DIR=$2
 
 FIXED_HOME=/app
 
+uname -a
+cat /etc/lsb-release
+
 mkdir -p $CACHE_DIR
 
 # Set LD_LIBRARAY_PATH and link essential libraries
+rm -rf $FIXED_HOME/usr/lib
 mkdir -p $FIXED_HOME/usr/lib
-ln -s /usr/lib/libgmp.so.3.5.2 $FIXED_HOME/usr/lib/libgmp.so
-export LD_LIBRARY_PATH=$FIXED_HOME/usr/lib
+cp $LP_DIR/libgmp.so.10 $FIXED_HOME/usr/lib/
+ln -s $FIXED_HOME/usr/lib/libgmp.so.10 $FIXED_HOME/usr/lib/libgmp.so
+ln -s /usr/lib/libncurses.so.5 $FIXED_HOME/usr/lib/libtinfo.so.5
+export LD_LIBRARY_PATH=$FIXED_HOME/usr/lib:$LD_LIBRARY_PATH
+export LIBRARY_PATH=$FIXED_HOME/usr/lib:$LIBRARY_PATH
 
 if [ -e $CACHE_DIR/ghc ]; then
   rm -rf $FIXED_HOME/.ghc
-  mv $CACHE_DIR/ghc $FIXED_HOME/.ghc
+  cp $CACHE_DIR/ghc $FIXED_HOME/.ghc
 elif [ ! -e $FIXED_HOME/.ghc ]; then
-  GHC_URL="http://www.haskell.org/ghc/dist/7.8.4/ghc-7.8.4-x86_64-unknown-linux.tar.bz2"
+  GHC_URL="http://downloads.haskell.org/~ghc/7.8.4/ghc-7.8.4-x86_64-unknown-linux-deb7.tar.bz2"
   echo "-----> Downloading GHC"
   curl -# --max-time 120 -L "$GHC_URL" | tar xj -C $CACHE_DIR
   cd $CACHE_DIR/ghc-7.8.4/
-  ./configure --prefix=$FIXED_HOME/.ghc --with-gmp-libraries=$FIXED_HOME/usr/lib
+  ./configure --prefix=$FIXED_HOME/.ghc# --with-gmp-libraries=$FIXED_HOME/usr/lib
   make install
+  mv $CACHE_DIR/ghc-7.8.4 $CACHE_DIR/ghc
   cd ..
 fi
+
+# Add ghc PATH
+export PATH=$FIXED_HOME/.ghc/bin:$PATH
+echo "main=print ()" > $CACHE_DIR/test.hs
+ghc --make $CACHE_DIR/test.hs
 
 # Restore Cabal cache or download an empty environemt
 if [ -e $CACHE_DIR/cabal ]; then
   rm -rf $FIXED_HOME/.cabal
-  mv $CACHE_DIR/cabal $FIXED_HOME/.cabal
+  cp $CACHE_DIR/cabal $FIXED_HOME/.cabal
 elif [ ! -e $FIXED_HOME/.cabal ]; then
-  CABAL_URL="http://hackage.haskell.org/packages/archive/cabal-install/1.22.0.0/cabal-install-1.22.0.0.tar.gz"
+  CABAL_URL="http://hackage.haskell.org/packages/archive/cabal-install/1.18.0.8/cabal-install-1.18.0.8.tar.gz"
   echo "-----> Downloading Cabal"
   curl -# --max-time 120 -L "$CABAL_URL" | tar xz -C $CACHE_DIR
-  cd $CACHE_DIR/cabal-install-1.22.0.0/
-  sh bootstrap.sh
+  cd $CACHE_DIR/cabal-install-1.18.0.8
+  LIBRARY_PATH=$FIXED_HOME/usr/lib sh bootstrap.sh
   cd ..
+  mv $CACHE_DIR/cabal-install-1.18.0.8 $CACHE_DIR/cabal
 fi
 
-# Set PATH
-export PATH=$FIXED_HOME/.ghc/bin:$FIXED_HOME/.cabal/bin:$PATH
+# Add cabal PATH
+export PATH=$FIXED_HOME/.cabal/bin:$PATH
 
 echo "-----> Updating Cabal"
 cabal update
@@ -61,12 +75,6 @@ wget https://www.stackage.org/lts/cabal.config
 cabal update
 cabal sandbox init
 cabal install -j5 --disable-library-profiling --disable-executable-profiling --disable-shared
-
-echo "-----> Caching Cabal packages"
-echo $FIXED_HOME/.ghc
-shopt -s extglob
-mv $FIXED_HOME/.cabal $CACHE_DIR/cabal
-mv $FIXED_HOME/.ghc $CACHE_DIR/ghc
 
 echo "Cache dir size:"
 du -ms $CACHE_DIR
